@@ -406,6 +406,12 @@
     <Compile Include="Core\Windows\Filter.Designer.cs">
       <DependentUpon>Filter.cs</DependentUpon>
     </Compile>
+    <Compile Include="Core\Windows\PluginStore.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Core\Windows\PluginStore.Designer.cs">
+      <DependentUpon>PluginStore.cs</DependentUpon>
+    </Compile>
     <Compile Include="CusDGV.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -435,6 +441,7 @@
     <Compile Include="Search.Designer.cs">
       <DependentUpon>Search.cs</DependentUpon>
     </Compile>
+    <Compile Include="ShortcutHandler.cs" />
     <Compile Include="UpdateAvailable.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -446,6 +453,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Core\Windows\Filter.resx">
       <DependentUpon>Filter.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Core\Windows\PluginStore.resx">
+      <DependentUpon>PluginStore.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="EditHeader.resx">
       <DependentUpon>EditHeader.cs</DependentUpon>
