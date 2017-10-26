@@ -16,6 +16,7 @@ using Syncfusion.Windows.Forms.Grid;
 using Syncfusion.GridHelperClasses;
 using CSV_Analyzer_Pro.Core.PluginSystem;
 using Syncfusion.Windows.Forms.Grid.Grouping;
+using Syncfusion.Windows.Forms.Spreadsheet;
 
 namespace CSV_Analyzer_Pro{
     public partial class Form1 : Form{
@@ -25,14 +26,13 @@ namespace CSV_Analyzer_Pro{
         DataSet ds = new DataSet();
 
         BackgroundWorker worker;
-        
+        ShortcutHandler shortcutHandler;
+
         string path = "";
 
         bool _exiting = false;
 
         string Filters = "csv files (*.csv)|*.csv";
-
-        List<TabExtraInfo> tabMetadataList = new List<TabExtraInfo>();
         #endregion
 
         #region Initializing
@@ -49,10 +49,11 @@ namespace CSV_Analyzer_Pro{
 
             //Enable Progress Reorting
             worker.WorkerReportsProgress = true;
-            
-            //Create tab metadata for Welcome page
-            TabExtraInfo welcomePage = new TabExtraInfo(0, "N/A");
-            tabMetadataList.Insert(0, welcomePage);
+
+            tabControl1.KeyUp += new KeyEventHandler(KeyUpReporter);
+            tabControl1.KeyDown += new KeyEventHandler(KeyDownReporter);
+            tabControl1.KeyDown += new KeyEventHandler(ShortcutChecker);
+            shortcutHandler = new ShortcutHandler();
         }
 
         private void Form1_Load(object sender, EventArgs e) {
@@ -76,21 +77,15 @@ namespace CSV_Analyzer_Pro{
 
         private void saveToolStripMenuItem_Click(object sender, EventArgs e) {
             if (!IsWelcomePage()) {
-                TabExtraInfo tabInfo;
-                tabInfo = tabMetadataList.ElementAt(tabControl1.SelectedIndex);
-                Thread th = new Thread(() => Save(tabInfo.GetAssocaitedFileName()));
+                Thread th = new Thread(() => Save(path));
                 th.Start();
             }
         }
 
         private void saveAsToolStripMenuItem_Click(object sender, EventArgs e) {
             if (!IsWelcomePage()) {
-                SaveAs();
+                SaveAs(path);
             }
-        }
-
-        private void saveAllToolStripMenuItem_Click(object sender, EventArgs e) {
-            SaveAll();
         }
 
         private void addNewRowToolStripMenuItem_Click(object sender, EventArgs e) {
@@ -166,18 +161,10 @@ namespace CSV_Analyzer_Pro{
 
         #region EventHandlers
         private void OnTabMouseUp(object sender, MouseEventArgs e) {
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(tabControl1.SelectedIndex);
-            bool hasUnsavedChanges = tabInfo.QueryHasUnsavedChanges();
             if (e.Button == MouseButtons.Right) {
-
-                if (hasUnsavedChanges) {
-                    PromptUnsavedChangesCloseTab(tabInfo);
-                } else { 
-                    DialogResult result = MessageBox.Show("Do you really want to close this file?", "Confirmation", MessageBoxButtons.YesNoCancel);
-                    if (result == DialogResult.Yes) {
-                        DeleteTab();
-                    }
+                DialogResult result = MessageBox.Show("Do you really wanna delete this page? All unsaved data will be lost!", "Confirmation", MessageBoxButtons.YesNoCancel);
+                if (result == DialogResult.Yes) {
+                    DeleteTab();
                 }
             }
         }
@@ -200,63 +187,40 @@ namespace CSV_Analyzer_Pro{
             //Psuedo code
         }
 
+        private void KeyDownReporter(object sender, KeyEventArgs e) {
+            shortcutHandler.ReportKeyDown(e.KeyCode.ToString());
+        }
+
+        private void KeyUpReporter(object sender, KeyEventArgs e) {
+            shortcutHandler.ReportKeyUp(e.KeyCode.ToString());
+        }
+
+        private void ShortcutChecker(object sender, KeyEventArgs e) {
+            switch (shortcutHandler.CheckShortcuts()) {
+                case ShortcutHandler.shortcuts.NewWindow:
+                    NewWindow();
+                    ShortcutHandler.Instance.shortcut = ShortcutHandler.shortcuts.NoShortcut;
+                    break;
+                case ShortcutHandler.shortcuts.Open:
+                    Browse();
+                    ShortcutHandler.Instance.shortcut = ShortcutHandler.shortcuts.NoShortcut;
+                    break;
+                case ShortcutHandler.shortcuts.Save:
+                    if (!IsWelcomePage()) {
+                        Thread th = new Thread(() => Save(path));
+                        th.Start();
+                    }
+                    ShortcutHandler.Instance.shortcut = ShortcutHandler.shortcuts.NoShortcut;
+                    break;
+            }
+        }
+
         private void Model_QueryCellInfo(object sender, Syncfusion.Windows.Forms.Grid.GridQueryCellInfoEventArgs e) {
             if (e.Style.CellType != "ColumnHeaderCell" && (e.RowIndex % 2 == 0))
                 e.Style.BackColor = Color.LightCyan;
             else
                 e.Style.BackColor = Color.GhostWhite;
         }
-
-        private void AddUnsavedMarkOnCellChanged(object sender, GridCellsChangedEventArgs e) {
-            int index = tabControl1.SelectedIndex;
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(index);
-            if (!tabInfo.QueryHasUnsavedChanges()) {
-                tabInfo.SetHasUnsavedChanges(true);
-                tabControl1.SelectedTab.Text = "*" + tabControl1.SelectedTab.Text; // Add asterisk to denote unsaved changes
-            }
-        }
-        
-        private void FillRangeWithValueOnCellChanged(object sender, GridCellsChangedEventArgs e)
-        {
-            var eventRange = e.Range;
-
-            if (eventRange.Top != eventRange.Bottom || eventRange.Left != eventRange.Right)
-            {
-                return;
-            }
-
-            var grid = tabControl1.SelectedTab.Controls.OfType<GridDataBoundGrid>().First();
-
-            var modifiedCell = grid[eventRange.Top, eventRange.Left];
-            var modifiedCellValue = modifiedCell.CellValue;
-                
-            var selectedRanges = grid.Selections.Ranges;
-            foreach (GridRangeInfo selectedRange in selectedRanges)
-            {
-                UpdateRange(selectedRange, grid, modifiedCellValue);
-            }
-        }
-
-        private static void UpdateRange(GridRangeInfo selectedRange, GridDataBoundGrid grid, object modifiedCellValue)
-        {
-            for (var row = selectedRange.Top; row <= selectedRange.Bottom; row++)
-            {
-                for (var col = selectedRange.Left; col <= selectedRange.Right; col++)
-                {
-                    UpdateCell(grid, modifiedCellValue, row, col);
-                }
-            }
-        }
-
-        private static void UpdateCell(GridDataBoundGrid grid, object modifiedCellValue, int row, int col)
-        {
-            if (grid[row, col].CellValue != modifiedCellValue)
-            {
-                grid[row, col].CellValue = modifiedCellValue;
-            }
-        }
-
         #endregion
 
         #region Main Functions
@@ -285,18 +249,6 @@ namespace CSV_Analyzer_Pro{
             if (tabControl1.SelectedIndex == 0) {
                 NewWindow();
             }
-
-            bool safeToOpen = true;
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(tabControl1.SelectedIndex);
-            if (tabInfo.QueryHasUnsavedChanges()) {
-                safeToOpen = PromptUnsavedChangesOpenTab(tabInfo); // Checking for unsaved changes since opening a new file deletes the current one
-            }
-
-            if (!safeToOpen) {
-                return;
-            }
-
             OpenFileDialog csvSearch = new OpenFileDialog();
             csvSearch.Filter = Filters;
             csvSearch.FilterIndex = 1;
@@ -311,7 +263,7 @@ namespace CSV_Analyzer_Pro{
                 DataTable dt = ds.Tables.Add(index.ToString());
                 path = csvSearch.FileName;
                 tabControl1.SelectedTab.Text = csvSearch.FileName;
-                OpenCSVFile();
+                Open(csvSearch.FileName);
             }
         }
 
@@ -348,10 +300,6 @@ namespace CSV_Analyzer_Pro{
                 //Bind data source
                 dbg.DataSource = ds.Tables[index.ToString()];
             }
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(tabControl1.SelectedIndex);
-            tabInfo.SetAssociatedFileName(tabControl1.SelectedTab.Text);
-            tabInfo.SetHasUnsavedChanges(false);
         }
         #endregion
 
@@ -394,9 +342,17 @@ namespace CSV_Analyzer_Pro{
             dbg.BaseStylesMap["Row Header"].StyleInfo.CellType = "Header";
 
             dbg.Model.QueryCellInfo += new Syncfusion.Windows.Forms.Grid.GridQueryCellInfoEventHandler(Model_QueryCellInfo);
-            dbg.Model.CellsChanged += new Syncfusion.Windows.Forms.Grid.GridCellsChangedEventHandler(AddUnsavedMarkOnCellChanged);
-            dbg.Model.CellsChanged += new Syncfusion.Windows.Forms.Grid.GridCellsChangedEventHandler(FillRangeWithValueOnCellChanged);
             #endregion
+        }
+
+        public void InitSpreadsheet(Spreadsheet spreadsheet) {
+            spreadsheet.Dock = DockStyle.Fill;
+
+            spreadsheet.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+        }
+
+        public void InitSpreadsheetRibbon(SpreadsheetRibbon sRibbon) {
+            sRibbon.MenuButtonVisible = false;
         }
 
         public bool IsWelcomePage() {
@@ -406,56 +362,14 @@ namespace CSV_Analyzer_Pro{
                 return false;
             }
         }
-
-        private void PromptUnsavedChangesCloseTab(TabExtraInfo tabInfo) {
-            UnsavedChangesSingleFile unsavedChangesBox = new UnsavedChangesSingleFile();
-            unsavedChangesBox.ShowDialog();
-
-            switch (unsavedChangesBox.GetUserAnswer()) {
-               case UnsavedChangesSingleFile.saveAndClose:
-                    Save(tabInfo.GetAssocaitedFileName(), tabControl1.SelectedIndex);
-                    DeleteTab();
-                    break;
-               case UnsavedChangesSingleFile.closeWithoutSaving:
-                    DeleteTab();
-                    break;
-               case UnsavedChangesSingleFile.Cancel:
-                    break;
-            }
-        }
-
-        private bool PromptUnsavedChangesOpenTab(TabExtraInfo tabInfo) {
-            UnsavedChangesSingleFile unsavedChangesBox = new UnsavedChangesSingleFile();
-            unsavedChangesBox.ShowDialog();
-
-            switch (unsavedChangesBox.GetUserAnswer()) {
-               case UnsavedChangesSingleFile.saveAndClose:
-                    Save(tabInfo.GetAssocaitedFileName(), tabControl1.SelectedIndex);
-                    return true;
-               case UnsavedChangesSingleFile.closeWithoutSaving:
-                    return true;
-               case UnsavedChangesSingleFile.Cancel:
-                    return false;
-               default:
-                    return false; // Should be unreachable
-            }
-        }
         #endregion
 
         #region Exiting Functions
         protected override void OnFormClosing(FormClosingEventArgs e) {
             base.OnFormClosing(e);
 
-            bool hasUnsavedChanges = false;
-
-            foreach (TabExtraInfo tabInfo in tabMetadataList) { 
-                if (tabInfo.QueryHasUnsavedChanges()) {
-                    hasUnsavedChanges = true;
-                }
-            }
-
-            if (e.CloseReason == CloseReason.WindowsShutDown) { return; }
-            if (!_exiting && !hasUnsavedChanges) {
+            if (e.CloseReason == CloseReason.WindowsShutDown) return;
+            if (!_exiting) {
                 switch (MessageBox.Show(this, "Are you sure you want to exit?", "Closing", MessageBoxButtons.YesNo)) {
                     case DialogResult.No:
                         e.Cancel = true;
@@ -467,34 +381,12 @@ namespace CSV_Analyzer_Pro{
                         break;
                 }
             }
-            else if (!_exiting && hasUnsavedChanges) {
-                PromptUnsavedChangesExit(e);
-            }   
-        }
-
-        private void PromptUnsavedChangesExit(FormClosingEventArgs e) {
-            UnsavedChangesMultipleFiles unsavedChangesBox = new UnsavedChangesMultipleFiles();
-            unsavedChangesBox.ShowDialog();
-
-            switch (unsavedChangesBox.GetUserAnswer())
-            {
-                case UnsavedChangesMultipleFiles.saveAllAndClose:
-                    SaveAll();
-                    ExitAll();
-                    break;
-                case UnsavedChangesMultipleFiles.closeWithoutSaving:
-                    ExitAll();
-                    break;
-                case UnsavedChangesMultipleFiles.Cancel:
-                    e.Cancel = true;
-                    break;
-            }
         }
 
         private void ExitAll() {
             _exiting = true;
             try {
-                Environment.Exit(0);
+                Application.Exit();
             }catch(Exception e) {
                 MessageBox.Show("There was an error trying to shutdown.\n\n Try closing all pages and then exiting.");
             }
@@ -504,102 +396,50 @@ namespace CSV_Analyzer_Pro{
         #region Commands
         private void NewWindow() {
             TabPage tb = new TabPage();
-            GridDataBoundGrid dbg = new GridDataBoundGrid();
-            InitGrid(dbg);
-            loader.GetPluginByTargetFramework("GridDataBoundGrid", dbg);
+            Spreadsheet spreadsheet = new Spreadsheet();
+            SpreadsheetRibbon sRibbon = new SpreadsheetRibbon() { Spreadsheet = spreadsheet };
 
-            //GridCardView card = new GridCardView();
-            //card.CaptionField = "ProductName";
-            //card.WireGrid(dbg);
+            InitSpreadsheet(spreadsheet);
+            InitSpreadsheetRibbon(sRibbon);
+
             DataTable dt = new DataTable();
 
             tb.Text = "New";
 
-            tb.Controls.Add(dbg);
+            tb.Controls.Add(spreadsheet);
+            tb.Controls.Add(sRibbon);
             tabControl1.TabPages.Add(tb);
             tabControl1.SelectedTab = tb;
-            
-            TabExtraInfo newTab = new TabExtraInfo(tabControl1.TabCount-1, "N/A");
-            tabMetadataList.Insert(tabControl1.TabCount-1, newTab);
         }
 
-        private void Save(string filePath, int index=-1) {
-            if (index == -1) {
-                index = tabControl1.SelectedIndex;
-                // I found that the usage of SelectedIndex in the Save functions resticted them to the current tab, which was a problem when trying to implement SaveAll.
-                // This should allow saving of data from any tab without interfering with current functions by defaulting to SelectedIndex if no other index is specified.
-            }
+        private void NewPluginStoreTab() {
+            TabPage tp = new TabPage();
 
-            if (filePath == "N/A") {
-                return; // Skipping tabs with associatedFileName of N/A, mainly the Welcome page
-            }
+            WebBrowser wb = new WebBrowser();
+            System.Uri uri = new System.Uri("https://deathcrow.altervista.org/update/PluginStore/index.php");
+            wb.Url = uri;
 
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(index);
-
-            StringBuilder sb = new StringBuilder();
-
-            IEnumerable<string> columnNames = ds.Tables[index.ToString()].Columns.Cast<DataColumn>().
-                                              Select(column => column.ColumnName);
-            sb.AppendLine(string.Join(",", columnNames));
-
-            foreach (DataRow row in ds.Tables[index.ToString()].Rows) {
-                IEnumerable<string> fields = row.ItemArray.Select(field => field.ToString());
-                sb.AppendLine(string.Join(",", fields));
-            }
-
-            bool success;
-
-            try {
-                File.WriteAllText(filePath, sb.ToString());
-                success = true;
-            } catch (Exception e) {
-                Console.WriteLine("An Exception occured when trying to save file");
-                success = false;
-            }
-
-            if (success && tabInfo.QueryHasUnsavedChanges()) { // Avoiding removal of unsaved changes marker where it does not exist or where save has failed
-                tabInfo.SetHasUnsavedChanges(false);
-                tabControl1.TabPages[index].Text = tabControl1.TabPages[index].Text.Substring(1); // Return substring without unsaved changed marker
-            }
+            tp.Controls.Add(wb);
+            tabControl1.TabPages.Add(tp);
+            tabControl1.SelectedTab = tp;
         }
 
-        private void SaveAs() {
-            int index = tabControl1.SelectedIndex;
-
-            string savePath = "";
-
-            SaveFileDialog saveAs = new SaveFileDialog();
-            saveAs.Filter = "csv files (*.csv)|*.csv";
-            saveAs.FilterIndex = 1;
-
-            if (saveAs.ShowDialog() == DialogResult.OK) {
-                savePath = saveAs.FileName;
-            }
-
-            TabExtraInfo tabInfo;
-            tabInfo = tabMetadataList.ElementAt(tabControl1.SelectedIndex);
-            tabInfo.SetAssociatedFileName(savePath);
-            tabControl1.SelectedTab.Text = savePath;
-
-            Thread th = new Thread(() => Save(savePath));
-            th.Start();
-
-            //Retired
-            //Save(savePath);
+        private void Open(string path) {
+            Spreadsheet spreadsheet = tabControl1.SelectedTab.Controls.OfType<Spreadsheet>().First();
+            spreadsheet.Open(path);
         }
 
-        private void SaveAll() {
-            int i;
-            TabExtraInfo tabInfo;
-            for (i = 0; i < tabControl1.TabCount; i++) {
-                tabInfo = tabMetadataList.ElementAt(i);
-                Save(tabInfo.GetAssocaitedFileName(), i);
-            }
+        private void Save(string path) {
+            Spreadsheet spreadsheet = tabControl1.SelectedTab.Controls.OfType<Spreadsheet>().First();
+            spreadsheet.Save();
+        }
+
+        private void SaveAs(string path) {
+            Spreadsheet spreadsheet = tabControl1.SelectedTab.Controls.OfType<Spreadsheet>().First();
+            spreadsheet.SaveAs(path);
         }
 
         private void DeleteTab() {
-            tabMetadataList.RemoveAt(tabControl1.SelectedIndex);
             Debug.WriteLine("Delete Tab Called");
             int index = tabControl1.SelectedIndex;
             tabControl1.TabPages.RemoveAt(index);
